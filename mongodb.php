@@ -175,7 +175,7 @@ class mongodb {
 	}
 	
 	/**
-	 * get function.
+	 * Function to get document(s).
 	 * 
 	 * @access public
 	 * @param array $filter. (default: array())
@@ -207,6 +207,14 @@ class mongodb {
 		
 	}
 	
+	/**
+	 * Function to delete document(s).
+	 * 
+	 * @access public
+	 * @param array $filter. (default: array())
+	 * @param mixed $multiple. (default: FALSE)
+	 * @return void
+	 */
 	function delete( $filter = array(), $multiple = FALSE )
 	{
 		if( !is_array( $filter ) )
