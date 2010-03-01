@@ -1,0 +1,9 @@
+For usage see mongodb.php
+
+This is very alpha code!
+
+What I plan to do in the future is try and convert this file into more of an active record style library so you can write:
+
+// Update everyone who is 20 in the USA to have a legal drinking status
+$this->mongodb->connect('localhost', 27017)->db('dbname')->collection('people');
+$this->mongodb->where_gte('age' => 21)->where('country' => 'USA')->set('can_drink' => TRUE);
