@@ -175,7 +175,26 @@ class mongodb {
 	}
 	
 	/**
-	 * Function to get document(s).
+	 * Function to get documents.
+	 * 
+	 * @access public
+	 * @param array $filter. (default: array())
+	 * @return void
+	 */
+	function get( $filter = array() )
+	{
+		if( !is_array( $filter) )
+		{
+			show_error( "MongoDB get filter not an array", 500 );
+			return;
+		}
+		
+		return $this->connection->find( $filter );
+		
+	}
+	
+	/**
+	 * Function to update document(s).
 	 * 
 	 * @access public
 	 * @param array $filter. (default: array())
@@ -183,7 +202,7 @@ class mongodb {
 	 * @param array $options. (default: array('multiple')
 	 * @return void
 	 */
-	function get( $filter = array(), $updates = array(), $options = array('multiple' => FALSE) )
+	function update( $filter = array(), $updates = array(), $options = array('multiple' => FALSE) )
 	{
 		if( !is_array( $filter ) )
 		{
@@ -231,5 +250,5 @@ class mongodb {
 		
 		$this->connection->remove( $filter, $multiple );
 	}
- 
+
 }
