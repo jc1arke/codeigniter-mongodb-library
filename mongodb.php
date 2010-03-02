@@ -169,7 +169,7 @@ class mongodb {
 			return;
 		}
 		
-		$this->collection->insert( $insert, $safe );
+		$this->connection->insert( $insert, $safe );
 		
 		return $insert['_id'];
 	}
@@ -203,7 +203,7 @@ class mongodb {
 			return;
 		}
 		
-		$this->collection->update( $filter, $updates, $options );
+		$this->connection->update( $filter, $updates, $options );
 		
 	}
 	
@@ -229,7 +229,7 @@ class mongodb {
 			return;
 		}
 		
-		$this->collection->remove( $filter, $multiple );
+		$this->connection->remove( $filter, $multiple );
 	}
  
 }
