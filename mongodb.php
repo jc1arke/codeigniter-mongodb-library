@@ -1,6 +1,6 @@
 <?php if ( ! defined('BASEPATH')) exit('No direct script access allowed');
 /**
- * CodeIgniter MongoDB Library
+ * CodeIgniter MongoDB Active Record Library
  *
  * A library to interface with the NoSQL database MongoDB. For more information see http://www.mongodb.org
  *
@@ -9,246 +9,369 @@
  * @copyright	Copyright (c) 2010, Alex Bilbie.
  * @license		http://codeigniter.com/user_guide/license.html
  * @link		http://alexbilbie.com/code/
- * @version		Version 0.1
+ * @version		Version 0.2
  */
- 
- /**
- *	Usage
- *	
- *	Connect to a MongoDB instance
- *		$this->mongodb->connect('localhost', 27017);
- *
- *	Select a database
- *		$this->mongodb->db('dbname');
- *
- *	Select a collection
- *		$this->mongodb->collection('collection name');
- *
- *	Insert a document into a collection (returns the insert ID)
- *		$this->mongodb->insert( array('name' => 'Alex Bilbie', 'email' => 'alex@alexbilbie.com', 'age' => 20) );
- *
- *	Get documents (where email = 'alex@alexbilbie.com')
- *		$this->mongodb->get( array('email' => 'alex@alexbilbie.com') );
- *
- *	Get documents (where age is greater than 19)
- *		$this->mongodb->get( array('age' => array('$gt' => 19) );
- *
- *	Get documents (where email = 'alex@alexbilbie.com' AND age is greater than 19
- *		$this->mongodb->get( array('email' => 'alex@alexbilbie.com', 'age' => array('$gt' => 19) );
- *
- *	Update a single document (where email = 'alex@alexbilbie.com')
- *		$this->mongodb->update( array('email' => 'alex@alexbilbie.com'), array('age' => 21), array('multiple' => FALSE) );
- *
- *	Update multiple documents (where age = 20)
- *		$this->mongodb->update( array('age' => 20), array('age' => 21) );
- *
- *	Delete a single document (where email = 'alex@alexbilbie.com')
- *		$this->mongodb->delete( array('email' => 'alex@alexbilbie.com') );
- *
- *	Delete multiple documents (where age = 20)
- *		$this->mongodb->delete( array('age' => 20), TRUE );
- *		
- */
- 
-class mongodb {
+class mongo_db {
 
-	private $host = 'localhost';
-	private $port = 27017;
-	
 	private $connection;
+	private $db;
 	
-	var $ci;
+	private $select = array();
+	private $where = array();
+	private $limit = NULL;
+	private $offset = NULL;
+	private $sort = array();
 
-	/**
-	 * mongodb function.
-	 * 
-	 * @access public
-	 * @return void
-	 */
-	function mongodb()
-	{
-		$this->__construct();
-	}
-	
-	/**
-	 * __construct function.
-	 * 
-	 * @access public
-	 * @return void
-	 */
 	function __construct()
-	{	
-		// Get instance of CI super object
-		$this->CI =& get_instance();	
+	{
+		if(!class_exists('Mongo'))
+		{
+			show_error('It looks like the MongoDB PECL extension isn\'t installed or enabled', 500);
+		}
 	}
 	
-	/**
-	 * Function to connect to a MongoDB.
-	 * 
-	 * @access public
-	 * @param mixed $host. (default: FALSE)
-	 * @param mixed $port. (default: FALSE)
-	 * @return $this
-	 */
-	function connect($host = FALSE, $port = FALSE)
+	/* Connect function
+	 *
+	 * Connect to a Mongo database
+	 *
+	 * Usage: $this->mongo_db->connect();
+	 */ 
+	function connect($host = 'localhost:27017', $db = "")
 	{
-	
-		if($host)
-		{
-			$this->host = $host;
-		}
+		$this->connection = new Mongo("{$host}");
 		
-		if($port)
+		if(!empty($db))
 		{
-			$this->port = $port;
+			$this->db = $db;
 		}
-		
-		$this->connection = new Mongo( $host . ":" . $port ) or show_error( "Failed to connect to MongoDB on {$host}:{$port}", 500 );
+		else
+		{
+			show_error('No Mongo database selected', 500);
+		}
 		
 		return $this;
-		
 	}
 	
-	/**
-	 * Function to select a database.
-	 * 
-	 * @access public
-	 * @param mixed $db. (default: NULL)
-	 * @return $this
-	 */
-	function db( $db = NULL )
+	//! Get Functions
+	
+	/* Select function
+	 *
+	 * Select specific fields from a document
+	 *
+	 * Usage: $this->mongo_db->select(array('foo','bar'))->get('foobar');
+	 */ 
+	function select($what = array())
 	{
-	
-		if( $db == NULL )
+		if(is_array($what) && count($what) > 0)
 		{
-			show_error( "No MongoDB database selected", 500 );
-			return;
+			$this->select = $what;
 		}
-	
-		$this->connection->selectDB( $db );
+		elseif($what !== "")
+		{
+			$this->select = array();
+			$this->select[] = $what;
+		}
 		
 		return $this;
-	
 	}
 	
-	/**
-	 * Function to select a connection.
-	 * 
-	 * @access public
-	 * @param mixed $collection. (default: NULL)
-	 * @return $this
-	 */
-	function collection( $collection = NULL )
+	/* Where function
+	 *
+	 * Get documents where something
+	 *
+	 * Usage: $this->mongo_db->where(array('foo' => 1))->get('foobar');
+	 */ 
+	function where($where = array())
 	{
+		$this->where = $where;
+		return $this;
+	}
 	
-		if( $collection == NULL )
+	/* Where_in function
+	 *
+	 * Get documents where something is in an array of something
+	 *
+	 * Usage: $this->mongo_db->where_in('foo', array(1,2,3))->get('foobar');
+	 */ 
+	function where_in($what = "", $in = array())
+	{
+		if(!isset($this->where[$what]))
 		{
-			show_error( "No MongoDB collection selected", 500 );
-			return;
+			$this->where[$what] = array();
+		}
+		$this->where[$what]['$in'] = $in;
+		return $this;
+	}
+	
+	/* Where_in function
+	 *
+	 * Get documents where something is in all of an array of something
+	 *
+	 * Usage: $this->mongo_db->where_in_all('foo', array(1,2,3))->get('foobar');
+	 */
+	function where_in_all($what = "", $in = array())
+	{
+		if(!isset($this->where[$what]))
+		{
+			$this->where[$what] = array();
+		}
+		$this->where[$what]['$all'] = $in;
+		return $this;
+	}
+	
+	/* Where_not_in function
+	 *
+	 * Get documents where something is not in an array of something
+	 *
+	 * Usage: $this->mongo_db->where_not_in('foo', array(1,2,3))->get('foobar');
+	 */
+	function where_not_in($what = "", $in)
+	{
+		if(!isset($this->where[$what]))
+		{
+			$this->where[$what] = array();
+		}
+		$this->where[$what]['$nin'] = $in;
+		return $this;
+	}
+	
+	/* Where_gt function
+	 *
+	 * Get documents where something is greater than something
+	 *
+	 * Usage: $this->mongo_db->where_gt('foo', 1)->get('foobar');
+	 */
+	function where_gt($what, $gt)
+	{
+		if(!isset($this->where[$what]))
+		{
+			$this->where[$what] = array();
+		}
+		$this->where[$what]['$gt'] = $gt;
+		return $this;
+	}
+	
+	/* Where_gte function
+	 *
+	 * Get documents where something is greater than or equal to something
+	 *
+	 * Usage: $this->mongo_db->where_gte('foo', 1)->get('foobar');
+	 */
+	function where_gte($what, $gte)
+	{
+		if(!isset($this->where[$what]))
+		{
+			$this->where[$what] = array();
+		}
+		$this->where[$what]['$gte'] = $gte;
+		return $this;
+	}
+	
+	/* Where_lt function
+	 *
+	 * Get documents where something is lee than something
+	 *
+	 * Usage: $this->mongo_db->where_lt('foo', 1)->get('foobar');
+	 */
+	function where_lt($what, $lt)
+	{
+		if(!isset($this->where[$what]))
+		{
+			$this->where[$what] = array();
+		}
+		$this->where[$what]['$lt'] = $lt;
+		return $this;
+	}
+	
+	/* Where_lte function
+	 *
+	 * Get documents where something is less than or equal to something
+	 *
+	 * Usage: $this->mongo_db->where_lte('foo', 1)->get('foobar');
+	 */
+	function where_lte($what, $lte)
+	{
+		if(!isset($this->where[$what]))
+		{
+			$this->where[$what] = array();
+		}
+		$this->where[$what]['$lte'] = $lte;
+		return $this;
+	}
+	
+	/* Where_lte function
+	 *
+	 * Get documents where something is not equal to something
+	 *
+	 * Usage: $this->mongo_db->where_not_equal('foo', 1)->get('foobar');
+	 */
+	function where_not_equal($what, $to)
+	{
+		if(!isset($this->where[$what]))
+		{
+			$this->where[$what] = array();
+		}
+		$this->where[$what]['$ne'] = $to;
+		return $this;
+	}
+	
+	/* Order_by function
+	 *
+	 * Order documents by something ascending (1) or descending (-1)
+	 *
+	 * Usage: $this->mongo_db->order_by('foo', 1)->get('foobar');
+	 */
+	function order_by($what, $order = "ASC")
+	{
+		if($order = "ASC"){ $order = 1; }
+		elseif($order = "DESC"){ $order = -1; }
+		$this->sort[] = array($what => $order);
+		return $this;
+	}
+	
+	/* Limit function
+	 *
+	 * Limit the returned documents by something (and optionally an offset)
+	 *
+	 * Usage: $this->mongo_db->limit(5,5)->get('foobar');
+	 */
+	function limit($limit = NULL, $offset = NULL)
+	{
+		if($limit !== NULL && is_numeric($limit) && $limit >= 1)
+		{
+			$this->limit = $limit;
 		}
 		
-		$this->connection->selectCollection( $collection );
+		if($offset !== NULL && is_numeric($offset) && $offset >= 1)
+		{
+			$this->offset = $offset;
+		}
 		
 		return $this;
-	
 	}
 	
-	/**
-	 * Function to insert a document into a collection.
-	 * 
-	 * @access public
-	 * @param array $insert. (default: array())
-	 * @param mixed $safe. (default: TRUE)
-	 * @return void
+	/* Get_where function
+	 *
+	 * Get documents where something
+	 *
+	 * Usage: $this->mongo_db->get_where('foobar', array('foo' => 'bar'));
 	 */
-	function insert( $insert = array(), $safe = TRUE )
+	function get_where($collection = "", $where = array())
 	{
-		if( !is_array( $insert ) && count( $insert ) == 0 )
-		{
-			show_error( "MongoDB insert value is empty or not an array", 500 );
-			return;
-		}
-		
-		$this->connection->insert( $insert, $safe );
-		
-		return $insert['_id'];
+		return $this->where($where)->get($collection);
 	}
 	
-	/**
-	 * Function to get documents.
-	 * 
-	 * @access public
-	 * @param array $filter. (default: array())
-	 * @return void
+	/* Get function
+	 *
+	 * Get documents from a collection
+	 *
+	 * Usage: $this->mongo_db->get('foobar');
 	 */
-	function get( $filter = array() )
+	function get($collection = "")
 	{
-		if( !is_array( $filter) )
+		if($collection !== "")
 		{
-			show_error( "MongoDB get filter not an array", 500 );
-			return;
+			$results = array();
+						
+			// Initial query
+			$documents = $this->connection->{$this->db}->{$collection}->find($this->where);
+			
+			// Limit the results
+			if($this->limit !== NULL)
+			{
+				$documents = $documents->limit($this->limit);
+			}
+			
+			// Offset the results
+			if($this->offset !== NULL)
+			{
+				$documents = $documents->skip($this->offset);
+			}
+			
+			// Get the results
+			while($documents->hasNext())
+			{
+				$document = $documents->getNext();
+				if($this->select !== NULL && count($this->select) > 0)
+				{
+					foreach($this->select as $s)
+					{
+						if(isset($document[$s])){
+							$results[][$s] = $document[$s];
+						}
+					}
+				}
+				else
+				{
+					$results[] = $document;
+				}
+				
+			}
+			
+			return $results;
 		}
 		
-		return $this->connection->find( $filter );
-		
+		else
+		{
+			show_error('No Mongo collection selected to query', 500);
+		}	
 	}
 	
-	/**
-	 * Function to update document(s).
-	 * 
-	 * @access public
-	 * @param array $filter. (default: array())
-	 * @param array $updates. (default: array())
-	 * @param array $options. (default: array('multiple')
-	 * @return void
+	/* Count function
+	 *
+	 * Count the number of documents
+	 *
+	 * Usage: $this->mongo_db->where(array('foo' => 'bar'))->count('foobar');
 	 */
-	function update( $filter = array(), $updates = array(), $options = array('multiple' => FALSE) )
+	function count($collection = "")
 	{
-		if( !is_array( $filter ) )
-		{
-			show_error( "MongoDB update filter value not an array", 500 );
-			return;
+		if($collection !== "")
+		{			
+			// Initial query
+			$documents = $this->connection->{$this->db}->{$collection}->find($this->where);
+			
+			// Limit the results
+			if($this->limit !== NULL)
+			{
+				$documents = $documents->limit($this->limit);
+			}
+			
+			// Offset the results
+			if($this->offset !== NULL)
+			{
+				$documents = $documents->skip($this->offset);
+			}
+			
+			return $documents->count();
 		}
 		
-		if( !is_array( $updates ) && count( $updates ) == 0 )
+		else
 		{
-			show_error( "MongoDB update value is empty or not an array", 500 );
-			return;
-		}
-		
-		if( !is_array( $options ) && count( $options ) == 0 )
-		{
-			show_error( "MongoDB options value is empty or not an array", 500 );
-			return;
-		}
-		
-		$this->connection->update( $filter, $updates, $options );
-		
+			show_error('No Mongo collection selected', 500);
+		}	
 	}
 	
-	/**
-	 * Function to delete document(s).
-	 * 
-	 * @access public
-	 * @param array $filter. (default: array())
-	 * @param mixed $multiple. (default: FALSE)
-	 * @return void
+	//! Insert functions
+	
+	/* Insert function
+	 *
+	 * Insert a new document into a collection
+	 *
+	 * Usage: $this->mongo_db->insert('foobar', array('foo' => 'bar'));
 	 */
-	function delete( $filter = array(), $multiple = FALSE )
+	function insert($collection = "", $insert = array())
 	{
-		if( !is_array( $filter ) )
+		if($collection !== "")
 		{
-			show_error( "MongoDB delete filter is not an array", 500 );
-			return;
+			show_error("No Mongo collection selected to insert into", 500);
 		}
 		
-		if( !is_bool($multiple) )
+		if(count($insert) == 0)
 		{
-			show_error( "MongoDB delete multiple option is not TRUE or FALSE", 500 );
-			return;
+			show_error("Nothing to insert into Mongo collection", 500);
 		}
 		
-		$this->connection->remove( $filter, $multiple );
+		$this->connection->{$this->db}->{$collection}->insert($insert);
 	}
 
 }
