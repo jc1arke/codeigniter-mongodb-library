@@ -9,9 +9,11 @@
  * @copyright	Copyright (c) 2010, Alex Bilbie.
  * @license		http://codeigniter.com/user_guide/license.html
  * @link		http://alexbilbie.com/code/
- * @version		Version 0.2
+ * @version		Version 0.2.2
  */
 class mongo_db {
+	
+	protected $CI;
 
 	private $connection;
 	private $db;
@@ -21,13 +23,24 @@ class mongo_db {
 	private $limit = NULL;
 	private $offset = NULL;
 	private $sort = array();
-
+	
+	/* Constuct function
+	 *
+	 * Checks that the Mongo PECL library is installed and enabled
+	 *
+	 */
 	function __construct()
 	{
 		if(!class_exists('Mongo'))
 		{
 			show_error('It looks like the MongoDB PECL extension isn\'t installed or enabled', 500);
+			return;
 		}
+		
+		$this->CI =& get_instance();
+		
+		// Attempt to connect
+		$this->connect();
 	}
 	
 	/* Connect function
@@ -36,9 +49,21 @@ class mongo_db {
 	 *
 	 * Usage: $this->mongo_db->connect();
 	 */ 
-	function connect($host = 'localhost:27017', $db = "")
+	private function connect()
 	{
-		$this->connection = new Mongo("{$host}");
+		$this->CI->config->load('mongodb');
+		
+		$host = $this->CI->config->item('mongo_host');
+		$port = $this->CI->config->item('mongo_port');
+		$db = $this->CI->config->item('mongo_db');
+		$username = $this->CI->config->item('mongo_username');
+		$password = $this->CI->config->item('mongo_password');
+		
+		if($host == "" || $port == "")
+		{
+			show_error('No host or port configured to connect to MongoDB', 500);
+			return;	
+		}
 		
 		if(!empty($db))
 		{
@@ -47,6 +72,24 @@ class mongo_db {
 		else
 		{
 			show_error('No Mongo database selected', 500);
+		}
+		
+		$auth = '';
+		if($username !== "" && $password !== "")
+		{
+			$auth = "{$username}:{$password}@";
+		}
+		
+		$connection_string = "mongodb://{$auth}{$host}:{$port}/$db";
+
+		// Make the connection
+		try
+		{
+			$this->connection = new Mongo($connection_string);
+		}
+		catch(Exception $e)
+		{
+			show_error('Unable to connect to MongoDB. Please check your host, port, username and password settings.', 500);
 		}
 		
 		return $this;
@@ -95,10 +138,8 @@ class mongo_db {
 	 */ 
 	function where_in($what = "", $in = array())
 	{
-		if(!isset($this->where[$what]))
-		{
-			$this->where[$what] = array();
-		}
+		$this->_where_init($what);
+		
 		$this->where[$what]['$in'] = $in;
 		return $this;
 	}
@@ -111,10 +152,8 @@ class mongo_db {
 	 */
 	function where_in_all($what = "", $in = array())
 	{
-		if(!isset($this->where[$what]))
-		{
-			$this->where[$what] = array();
-		}
+		$this->_where_init($what);
+		
 		$this->where[$what]['$all'] = $in;
 		return $this;
 	}
@@ -127,10 +166,8 @@ class mongo_db {
 	 */
 	function where_not_in($what = "", $in)
 	{
-		if(!isset($this->where[$what]))
-		{
-			$this->where[$what] = array();
-		}
+		$this->_where_init($what);
+		
 		$this->where[$what]['$nin'] = $in;
 		return $this;
 	}
@@ -143,10 +180,8 @@ class mongo_db {
 	 */
 	function where_gt($what, $gt)
 	{
-		if(!isset($this->where[$what]))
-		{
-			$this->where[$what] = array();
-		}
+		$this->_where_init($what);
+		
 		$this->where[$what]['$gt'] = $gt;
 		return $this;
 	}
@@ -159,10 +194,8 @@ class mongo_db {
 	 */
 	function where_gte($what, $gte)
 	{
-		if(!isset($this->where[$what]))
-		{
-			$this->where[$what] = array();
-		}
+		$this->_where_init($what);
+		
 		$this->where[$what]['$gte'] = $gte;
 		return $this;
 	}
@@ -175,10 +208,8 @@ class mongo_db {
 	 */
 	function where_lt($what, $lt)
 	{
-		if(!isset($this->where[$what]))
-		{
-			$this->where[$what] = array();
-		}
+		$this->_where_init($what);
+		
 		$this->where[$what]['$lt'] = $lt;
 		return $this;
 	}
@@ -191,10 +222,8 @@ class mongo_db {
 	 */
 	function where_lte($what, $lte)
 	{
-		if(!isset($this->where[$what]))
-		{
-			$this->where[$what] = array();
-		}
+		$this->_where_init($what);
+		
 		$this->where[$what]['$lte'] = $lte;
 		return $this;
 	}
@@ -207,10 +236,8 @@ class mongo_db {
 	 */
 	function where_not_equal($what, $to)
 	{
-		if(!isset($this->where[$what]))
-		{
-			$this->where[$what] = array();
-		}
+		$this->_where_init($what);
+		
 		$this->where[$what]['$ne'] = $to;
 		return $this;
 	}
@@ -272,6 +299,7 @@ class mongo_db {
 		if($collection !== "")
 		{
 			$results = array();
+			$i = 0;
 						
 			// Initial query
 			$documents = $this->connection->{$this->db}->{$collection}->find($this->where);
@@ -297,17 +325,17 @@ class mongo_db {
 					foreach($this->select as $s)
 					{
 						if(isset($document[$s])){
-							$results[][$s] = $document[$s];
+							$results[$i][$s] = $document[$s];
 						}
 					}
 				}
 				else
 				{
-					$results[] = $document;
+					$results[$i] = $document;
 				}
-				
+				$i++;
 			}
-			
+
 			return $results;
 		}
 		
@@ -342,15 +370,17 @@ class mongo_db {
 				$documents = $documents->skip($this->offset);
 			}
 			
+			$this->_clear();
 			return $documents->count();
 		}
 		
 		else
 		{
+			$this->_clear();
 			show_error('No Mongo collection selected', 500);
-		}	
+		}
 	}
-	
+		
 	//! Insert functions
 	
 	/* Insert function
@@ -361,17 +391,151 @@ class mongo_db {
 	 */
 	function insert($collection = "", $insert = array())
 	{
-		if($collection !== "")
+		if($collection == "")
 		{
 			show_error("No Mongo collection selected to insert into", 500);
 		}
 		
-		if(count($insert) == 0)
+		if(count($insert) == 0 || !is_array($insert))
 		{
-			show_error("Nothing to insert into Mongo collection", 500);
+			show_error("Nothing to insert into Mongo collection or insert is not an array", 500);
 		}
 		
-		$this->connection->{$this->db}->{$collection}->insert($insert);
+		return $this->connection->{$this->db}->{$collection}->insert($insert);
+	}
+	
+	//! Update functions
+	
+	/* Update function
+	 *
+	 * Update a single document in a collection
+	 *
+	 * Usage: $this->mongo_db->where(array('foo' => 'bar'))->update('foobar', array('foo' => 'foobar'));
+	 */
+	function update($collection = "", $update = array())
+	{
+		if($collection == "")
+		{
+			show_error("No Mongo collection selected to insert into", 500);
+		}
+		
+		if(count($update) == 0 || !is_array($update))
+		{
+			show_error("Nothing to update in Mongo collection or update is not an array", 500);
+		}
+		
+		$update_result = $this->connection->{$this->db}->{$collection}->update($this->where, array('$set' => $update));
+		$this->_clear();
+		return $update_result;
+	}
+	
+	/* Update function
+	 *
+	 * Update a all documents in a collection
+	 *
+	 * Usage: $this->mongo_db->where(array('foo' => 'bar'))->update('foobar', array('foo' => 'foobar'));
+	 */
+	function update_all($collection = "", $update = array())
+	{
+		if($collection == "")
+		{
+			show_error("No Mongo collection selected to insert into", 500);
+		}
+		
+		if(count($update) == 0 || !is_array($update))
+		{
+			show_error("Nothing to update in Mongo collection or update is not an array", 500);
+		}
+		
+		$update_result = $this->connection->{$this->db}->{$collection}->update($this->where, array('$set' => $update), array('multiple'=>TRUE));
+		$this->_clear();
+		return $update_result;
+	}
+	
+	//! Delete functions
+	
+	/* Delete function
+	 *
+	 * Delete a single document in a collection
+	 *
+	 * Usage: $this->mongo_db->delete('foobar', array('foo' => 'foobar'));
+	 */
+	function delete($collection = "", $delete = array())
+	{
+		if($collection == "")
+		{
+			show_error("No Mongo collection selected to insert into", 500);
+		}
+		
+		if(count($delete) == 0 || !is_array($delete))
+		{
+			show_error("Nothing to delete from Mongo collection or delete is not an array", 500);
+		}
+		
+		if(isset($delete["_id"]))
+		{
+			if(gettype($delete["_id"] == "string"))
+			{
+				$delete["_id"] = new MongoID($delete["_id"]);
+			}
+		}
+		
+		return $this->connection->{$this->db}->{$collection}->remove($delete, array('justOne'=>TRUE));
+	}
+	
+	/* Delete function
+	 *
+	 * Delete all documents in a collection
+	 *
+	 * Usage: $this->mongo_db->delete('foobar', array('foo' => 'foobar'));
+	 */
+	function delete_all($collection = "", $delete = array())
+	{
+		if($collection == "")
+		{
+			show_error("No Mongo collection selected to insert into", 500);
+		}
+		
+		if(count($delete) == 0 || !is_array($delete))
+		{
+			show_error("Nothing to delete from Mongo collection or delete is not an array", 500);
+		}
+		
+		if(isset($delete["_id"]))
+		{
+			if(gettype($delete["_id"] == "string"))
+			{
+				$delete["_id"] = new MongoID($delete["_id"]);
+			}
+		}
+		
+		return $this->connection->{$this->db}->{$collection}->remove($delete);
+	}
+		
+	
+	
+	
+	/*
+	 * Internal function to clear params so there are no conflicts
+	 */
+	private function _clear()
+	{
+		$this->select = array();
+		$this->where = array();
+		$this->limit = NULL;
+		$this->offset = NULL;
+		$this->sort = array();
+	}
+	
+	/*
+	 * Internal function to initialise parameters for where calls
+	 */
+	private function _where_init($what)
+	{
+		if(!isset($this->where[$what]))
+		{
+			$this->where[$what] = array();
+		}
 	}
 
 }
